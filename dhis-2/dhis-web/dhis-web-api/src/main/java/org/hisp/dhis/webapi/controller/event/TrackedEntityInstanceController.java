@@ -28,6 +28,7 @@ package org.hisp.dhis.webapi.controller.event;
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+import static com.google.common.base.Preconditions.checkNotNull;
 import static org.hisp.dhis.dxf2.webmessage.WebMessageUtils.jobConfigurationReport;
 import static org.hisp.dhis.scheduling.JobType.TEI_IMPORT;
 
@@ -35,8 +36,6 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -45,20 +44,14 @@ import javax.imageio.ImageIO;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.hisp.dhis.common.AccessLevel;
-import org.hisp.dhis.common.AssignedUserSelectionMode;
 import org.hisp.dhis.common.DhisApiVersion;
 import org.hisp.dhis.common.DxfNamespaces;
 import org.hisp.dhis.common.Grid;
-import org.hisp.dhis.common.OrganisationUnitSelectionMode;
 import org.hisp.dhis.common.Pager;
-import org.hisp.dhis.common.PagerUtils;
 import org.hisp.dhis.common.ValueType;
 import org.hisp.dhis.common.cache.CacheStrategy;
 import org.hisp.dhis.commons.util.StreamUtils;
-import org.hisp.dhis.commons.util.TextUtils;
 import org.hisp.dhis.dxf2.common.ImportOptions;
 import org.hisp.dhis.dxf2.events.TrackedEntityInstanceParams;
 import org.hisp.dhis.dxf2.events.trackedentity.ImportTrackedEntitiesTask;
@@ -70,7 +63,6 @@ import org.hisp.dhis.dxf2.importsummary.ImportSummaries;
 import org.hisp.dhis.dxf2.importsummary.ImportSummary;
 import org.hisp.dhis.dxf2.webmessage.WebMessageException;
 import org.hisp.dhis.dxf2.webmessage.WebMessageUtils;
-import org.hisp.dhis.event.EventStatus;
 import org.hisp.dhis.fieldfilter.FieldFilterParams;
 import org.hisp.dhis.fieldfilter.FieldFilterService;
 import org.hisp.dhis.fileresource.FileResource;
@@ -84,7 +76,6 @@ import org.hisp.dhis.node.types.CollectionNode;
 import org.hisp.dhis.node.types.RootNode;
 import org.hisp.dhis.program.Program;
 import org.hisp.dhis.program.ProgramService;
-import org.hisp.dhis.program.ProgramStatus;
 import org.hisp.dhis.scheduling.JobConfiguration;
 import org.hisp.dhis.scheduling.SchedulingManager;
 import org.hisp.dhis.schema.descriptors.TrackedEntityInstanceSchemaDescriptor;
@@ -98,17 +89,17 @@ import org.hisp.dhis.trackedentity.TrackerOwnershipManager;
 import org.hisp.dhis.trackedentityattributevalue.TrackedEntityAttributeValue;
 import org.hisp.dhis.user.CurrentUserService;
 import org.hisp.dhis.user.User;
+import org.hisp.dhis.webapi.controller.event.mapper.TrackedEntityCriteriaMapper;
 import org.hisp.dhis.webapi.controller.exception.NotFoundException;
 import org.hisp.dhis.webapi.mvc.annotation.ApiVersion;
 import org.hisp.dhis.webapi.service.ContextService;
 import org.hisp.dhis.webapi.service.WebMessageService;
 import org.hisp.dhis.webapi.utils.ContextUtils;
 import org.hisp.dhis.webapi.utils.FileResourceUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -133,111 +124,85 @@ import com.google.common.collect.Lists;
 @ApiVersion( { DhisApiVersion.DEFAULT, DhisApiVersion.ALL } )
 public class TrackedEntityInstanceController
 {
-    @Autowired
-    private TrackedEntityInstanceService trackedEntityInstanceService;
+    private final TrackedEntityInstanceService trackedEntityInstanceService;
 
-    @Autowired
-    private org.hisp.dhis.trackedentity.TrackedEntityInstanceService instanceService;
+    private final org.hisp.dhis.trackedentity.TrackedEntityInstanceService instanceService;
 
-    @Autowired
-    private TrackedEntityTypeService trackedEntityTypeService;
+    private final TrackedEntityTypeService trackedEntityTypeService;
 
-    @Autowired
-    private ContextUtils contextUtils;
+    private final ContextUtils contextUtils;
 
-    @Autowired
-    private FieldFilterService fieldFilterService;
+    private final FieldFilterService fieldFilterService;
 
-    @Autowired
-    private ContextService contextService;
+    private final ContextService contextService;
 
-    @Autowired
-    private WebMessageService webMessageService;
+    private final WebMessageService webMessageService;
 
-    @Autowired
-    private CurrentUserService currentUserService;
+    private final CurrentUserService currentUserService;
 
-    @Autowired
-    private FileResourceService fileResourceService;
+    private final FileResourceService fileResourceService;
 
-    @Autowired
-    private TrackerAccessManager trackerAccessManager;
+    private final TrackerAccessManager trackerAccessManager;
 
-    @Autowired
-    private SchedulingManager schedulingManager;
+    private final SchedulingManager schedulingManager;
 
-    @Autowired
-    private ProgramService programService;
+    private final ProgramService programService;
+
+    private final TrackedEntityCriteriaMapper criteriaMapper;
+
+    public TrackedEntityInstanceController( TrackedEntityInstanceService trackedEntityInstanceService,
+        org.hisp.dhis.trackedentity.TrackedEntityInstanceService instanceService,
+        TrackedEntityTypeService trackedEntityTypeService, ContextUtils contextUtils,
+        FieldFilterService fieldFilterService, ContextService contextService, WebMessageService webMessageService,
+        CurrentUserService currentUserService, FileResourceService fileResourceService,
+        TrackerAccessManager trackerAccessManager, SchedulingManager schedulingManager, ProgramService programService,
+        TrackedEntityCriteriaMapper criteriaMapper )
+    {
+        checkNotNull( trackedEntityInstanceService );
+        checkNotNull( instanceService );
+        checkNotNull( trackedEntityTypeService );
+        checkNotNull( contextUtils );
+        checkNotNull( fieldFilterService );
+        checkNotNull( contextService );
+        checkNotNull( webMessageService );
+        checkNotNull( currentUserService );
+        checkNotNull( fileResourceService );
+        checkNotNull( trackerAccessManager );
+        checkNotNull( schedulingManager );
+        checkNotNull( programService );
+        checkNotNull( criteriaMapper );
+
+        this.trackedEntityInstanceService = trackedEntityInstanceService;
+        this.instanceService = instanceService;
+        this.trackedEntityTypeService = trackedEntityTypeService;
+        this.contextUtils = contextUtils;
+        this.fieldFilterService = fieldFilterService;
+        this.contextService = contextService;
+        this.webMessageService = webMessageService;
+        this.currentUserService = currentUserService;
+        this.fileResourceService = fileResourceService;
+        this.trackerAccessManager = trackerAccessManager;
+        this.schedulingManager = schedulingManager;
+        this.programService = programService;
+        this.criteriaMapper = criteriaMapper;
+    }
 
     // -------------------------------------------------------------------------
     // READ
     // -------------------------------------------------------------------------
 
-    @RequestMapping( value = "", method = RequestMethod.GET )
-    public @ResponseBody RootNode getTrackedEntityInstances(
-        @RequestParam( required = false ) String query,
-        @RequestParam( required = false ) Set<String> attribute,
-        @RequestParam( required = false ) Set<String> filter,
-        @RequestParam( required = false ) String ou,
-        @RequestParam( required = false ) OrganisationUnitSelectionMode ouMode,
-        @RequestParam( required = false ) String program,
-        @RequestParam( required = false ) ProgramStatus programStatus,
-        @RequestParam( required = false ) Boolean followUp,
-        @RequestParam( required = false ) Date lastUpdatedStartDate,
-        @RequestParam( required = false ) Date lastUpdatedEndDate,
-        @RequestParam( required = false ) String lastUpdatedDuration,
-        @RequestParam( required = false ) Date programStartDate,
-        @RequestParam( required = false ) Date programEnrollmentStartDate,
-        @RequestParam( required = false ) Date programEndDate,
-        @RequestParam( required = false ) Date programEnrollmentEndDate,
-        @RequestParam( required = false ) Date programIncidentStartDate,
-        @RequestParam( required = false ) Date programIncidentEndDate,
-        @RequestParam( required = false ) String trackedEntityType,
-        @RequestParam( required = false ) String trackedEntityInstance,
-        @RequestParam( required = false ) AssignedUserSelectionMode assignedUserMode,
-        @RequestParam( required = false ) String assignedUser,
-        @RequestParam( required = false ) EventStatus eventStatus,
-        @RequestParam( required = false ) Date eventStartDate,
-        @RequestParam( required = false ) Date eventEndDate,
-        @RequestParam( required = false ) boolean skipMeta,
-        @RequestParam( required = false ) Integer page,
-        @RequestParam( required = false ) Integer pageSize,
-        @RequestParam( required = false ) boolean totalPages,
-        @RequestParam( required = false ) Boolean skipPaging,
-        @RequestParam( required = false ) Boolean paging,
-        @RequestParam( required = false ) boolean includeDeleted,
-        @RequestParam( required = false ) boolean includeAllAttributes,
-        @RequestParam( required = false ) String order,
-        @RequestParam( required = false ) boolean useFast ) throws Exception
+    @GetMapping
+    public @ResponseBody RootNode getTrackedEntityInstances( TrackedEntityInstanceCriteria criteria )
     {
-        programEnrollmentStartDate = ObjectUtils.firstNonNull( programEnrollmentStartDate, programStartDate );
-        programEnrollmentEndDate = ObjectUtils.firstNonNull( programEnrollmentEndDate, programEndDate );
-        List<String> fields = Lists.newArrayList( contextService.getParameterValues( "fields" ) );
-
-        if ( fields.isEmpty() )
-        {
-            fields.add( ":all" );
-        }
-
-        Set<String> orgUnits = TextUtils.splitToArray( ou, TextUtils.SEMICOLON );
-
-        Set<String> assignedUsers = TextUtils.splitToArray( assignedUser, TextUtils.SEMICOLON );
-
-        RootNode rootNode = NodeUtils.createMetadata();
-
         List<TrackedEntityInstance> trackedEntityInstances;
+        
+        List<String> fields = getFieldsFromRequest();
 
-        skipPaging = PagerUtils.isSkipPaging( skipPaging, paging );
+        TrackedEntityInstanceQueryParams queryParams = criteriaMapper.map( criteria );
 
-        TrackedEntityInstanceQueryParams queryParams = instanceService.getFromUrl( query, attribute, filter, orgUnits,
-            ouMode, program, programStatus, followUp, lastUpdatedStartDate, lastUpdatedEndDate, lastUpdatedDuration,
-            programEnrollmentStartDate, programEnrollmentEndDate, programIncidentStartDate, programIncidentEndDate,
-            trackedEntityType, eventStatus, eventStartDate, eventEndDate, assignedUserMode, assignedUsers, skipMeta,
-            page, pageSize, totalPages, skipPaging, includeDeleted, includeAllAttributes, getOrderParams( order ) );
-
-        if ( trackedEntityInstance == null )
+        if ( criteria.hasTrackedEntityInstance() )
         {
-            if ( useFast )
+            if ( criteria.isUseFast() ) // FIXME luciano: this has to be removed!
             {
                 trackedEntityInstances = trackedEntityInstanceService.getTrackedEntityInstances2( queryParams,
                     getTrackedEntityInstanceParams( fields ), false );
@@ -250,12 +215,14 @@ public class TrackedEntityInstanceController
         }
         else
         {
-            Set<String> trackedEntityInstanceIds = TextUtils.splitToArray( trackedEntityInstance, TextUtils.SEMICOLON );
+            Set<String> trackedEntityInstanceIds = criteria.getTrackedEntityInstances();
 
-            trackedEntityInstances = trackedEntityInstanceIds != null ? trackedEntityInstanceIds.stream()
+            trackedEntityInstances = trackedEntityInstanceIds.stream()
                 .map( id -> trackedEntityInstanceService.getTrackedEntityInstance( id, getTrackedEntityInstanceParams( fields ) ) )
-                .collect( Collectors.toList() ) : null;
+                .collect( Collectors.toList() );
         }
+
+        RootNode rootNode = NodeUtils.createMetadata();
 
         if ( queryParams.isPaging() && queryParams.isTotalPages() )
         {
@@ -270,40 +237,6 @@ public class TrackedEntityInstanceController
         return rootNode;
     }
 
-    private TrackedEntityInstanceParams getTrackedEntityInstanceParams( List<String> fields )
-    {
-        String joined = Joiner.on( "" ).join( fields );
-
-        if ( joined.contains( "*" ) )
-        {
-            return TrackedEntityInstanceParams.TRUE;
-        }
-
-        TrackedEntityInstanceParams params = new TrackedEntityInstanceParams();
-
-        if ( joined.contains( "relationships" ) )
-        {
-            params.setIncludeRelationships( true );
-        }
-
-        if ( joined.contains( "enrollments" ) )
-        {
-            params.setIncludeEnrollments( true );
-        }
-
-        if ( joined.contains( "events" ) )
-        {
-            params.setIncludeEvents( true );
-        }
-
-        if ( joined.contains( "programOwners" ) )
-        {
-            params.setIncludeProgramOwners( true );
-        }
-
-        return params;
-    }
-
     @RequestMapping( value = "/{teiId}/{attributeId}/image", method = RequestMethod.GET )
     public void getAttributeImage(
         @PathVariable( "teiId" ) String teiId,
@@ -311,9 +244,8 @@ public class TrackedEntityInstanceController
         @RequestParam( required = false ) Integer width,
         @RequestParam( required = false ) Integer height,
         @RequestParam( required = false ) ImageFileDimension dimension,
-        HttpServletResponse response,
-        HttpServletRequest request )
-        throws WebMessageException, NotFoundException
+        HttpServletResponse response)
+        throws WebMessageException
     {
         User user = currentUserService.getCurrentUser();
 
@@ -398,275 +330,60 @@ public class TrackedEntityInstanceController
         }
     }
 
-    @RequestMapping( value = "/query", method = RequestMethod.GET, produces = { ContextUtils.CONTENT_TYPE_JSON, ContextUtils.CONTENT_TYPE_JAVASCRIPT } )
-    public @ResponseBody Grid queryTrackedEntityInstancesJson(
-        @RequestParam( required = false ) String query,
-        @RequestParam( required = false ) Set<String> attribute,
-        @RequestParam( required = false ) Set<String> filter,
-        @RequestParam( required = false ) String ou,
-        @RequestParam( required = false ) OrganisationUnitSelectionMode ouMode,
-        @RequestParam( required = false ) String program,
-        @RequestParam( required = false ) ProgramStatus programStatus,
-        @RequestParam( required = false ) Boolean followUp,
-        @RequestParam( required = false ) Date lastUpdatedStartDate,
-        @RequestParam( required = false ) Date lastUpdatedEndDate,
-        @RequestParam( required = false ) Date programStartDate,
-        @RequestParam( required = false ) Date programEnrollmentStartDate,
-        @RequestParam( required = false ) Date programEndDate,
-        @RequestParam( required = false ) Date programEnrollmentEndDate,
-        @RequestParam( required = false ) Date programIncidentStartDate,
-        @RequestParam( required = false ) Date programIncidentEndDate,
-        @RequestParam( required = false ) String trackedEntityType,
-        @RequestParam( required = false ) AssignedUserSelectionMode assignedUserMode,
-        @RequestParam( required = false ) String assignedUser,
-        @RequestParam( required = false ) EventStatus eventStatus,
-        @RequestParam( required = false ) Date eventStartDate,
-        @RequestParam( required = false ) Date eventEndDate,
-        @RequestParam( required = false ) boolean skipMeta,
-        @RequestParam( required = false ) Integer page,
-        @RequestParam( required = false ) Integer pageSize,
-        @RequestParam( required = false ) boolean totalPages,
-        @RequestParam( required = false ) Boolean skipPaging,
-        @RequestParam( required = false ) Boolean paging,
-        @RequestParam( required = false ) boolean includeDeleted,
-        @RequestParam( required = false ) String order,
-        Model model,
-        HttpServletResponse response ) throws Exception
+    @RequestMapping( value = "/query", method = RequestMethod.GET, produces = { ContextUtils.CONTENT_TYPE_JSON,
+        ContextUtils.CONTENT_TYPE_JAVASCRIPT } )
+    public @ResponseBody Grid queryTrackedEntityInstancesJson( TrackedEntityInstanceCriteria criteria,
+        HttpServletResponse response )
     {
-        programEnrollmentStartDate = ObjectUtils.firstNonNull( programEnrollmentStartDate, programStartDate );
-        programEnrollmentEndDate = ObjectUtils.firstNonNull( programEnrollmentEndDate, programEndDate );
-        Set<String> orgUnits = TextUtils.splitToArray( ou, TextUtils.SEMICOLON );
-        Set<String> assignedUsers = TextUtils.splitToArray( assignedUser, TextUtils.SEMICOLON );
-
-        skipPaging = PagerUtils.isSkipPaging( skipPaging, paging );
-
-        TrackedEntityInstanceQueryParams params = instanceService.getFromUrl( query, attribute, filter, orgUnits, ouMode,
-            program, programStatus, followUp, lastUpdatedStartDate, lastUpdatedEndDate, null,
-            programEnrollmentStartDate, programEnrollmentEndDate, programIncidentStartDate, programIncidentEndDate,
-            trackedEntityType, eventStatus, eventStartDate, eventEndDate, assignedUserMode, assignedUsers, skipMeta,
-            page, pageSize, totalPages, skipPaging, includeDeleted, false, getOrderParams( order ) );
-
         contextUtils.configureResponse( response, ContextUtils.CONTENT_TYPE_JSON, CacheStrategy.NO_CACHE );
-        return instanceService.getTrackedEntityInstancesGrid( params );
+        return getGridByCriteria( criteria );
     }
 
     @RequestMapping( value = "/query", method = RequestMethod.GET, produces = ContextUtils.CONTENT_TYPE_XML )
-    public void queryTrackedEntityInstancesXml(
-        @RequestParam( required = false ) String query,
-        @RequestParam( required = false ) Set<String> attribute,
-        @RequestParam( required = false ) Set<String> filter,
-        @RequestParam( required = false ) String ou,
-        @RequestParam( required = false ) OrganisationUnitSelectionMode ouMode,
-        @RequestParam( required = false ) String program,
-        @RequestParam( required = false ) ProgramStatus programStatus,
-        @RequestParam( required = false ) Boolean followUp,
-        @RequestParam( required = false ) Date lastUpdatedStartDate,
-        @RequestParam( required = false ) Date lastUpdatedEndDate,
-        @RequestParam( required = false ) Date programStartDate,
-        @RequestParam( required = false ) Date programEnrollmentStartDate,
-        @RequestParam( required = false ) Date programEndDate,
-        @RequestParam( required = false ) Date programEnrollmentEndDate,
-        @RequestParam( required = false ) Date programIncidentStartDate,
-        @RequestParam( required = false ) Date programIncidentEndDate,
-        @RequestParam( required = false ) String trackedEntityType,
-        @RequestParam( required = false ) AssignedUserSelectionMode assignedUserMode,
-        @RequestParam( required = false ) String assignedUser,
-        @RequestParam( required = false ) EventStatus eventStatus,
-        @RequestParam( required = false ) Date eventStartDate,
-        @RequestParam( required = false ) Date eventEndDate,
-        @RequestParam( required = false ) boolean skipMeta,
-        @RequestParam( required = false ) Integer page,
-        @RequestParam( required = false ) Integer pageSize,
-        @RequestParam( required = false ) boolean totalPages,
-        @RequestParam( required = false ) Boolean skipPaging,
-        @RequestParam( required = false ) Boolean paging,
-        @RequestParam( required = false ) boolean includeDeleted,
-        @RequestParam( required = false ) String order,
+    public void queryTrackedEntityInstancesXml( TrackedEntityInstanceCriteria criteria,
         HttpServletResponse response ) throws Exception
     {
-        programEnrollmentStartDate = ObjectUtils.firstNonNull( programEnrollmentStartDate, programStartDate );
-        programEnrollmentEndDate = ObjectUtils.firstNonNull( programEnrollmentEndDate, programEndDate );
-        Set<String> orgUnits = TextUtils.splitToArray( ou, TextUtils.SEMICOLON );
-        Set<String> assignedUsers = TextUtils.splitToArray( assignedUser, TextUtils.SEMICOLON );
-
-        skipPaging = PagerUtils.isSkipPaging( skipPaging, paging );
-
-        TrackedEntityInstanceQueryParams params = instanceService.getFromUrl( query, attribute, filter, orgUnits, ouMode,
-            program, programStatus, followUp, lastUpdatedStartDate, lastUpdatedEndDate, null,
-            programEnrollmentStartDate, programEnrollmentEndDate, programIncidentStartDate, programIncidentEndDate,
-            trackedEntityType, eventStatus, eventStartDate, eventEndDate, assignedUserMode, assignedUsers, skipMeta,
-            page, pageSize, totalPages, skipPaging, includeDeleted, false, getOrderParams( order ) );
-
         contextUtils.configureResponse( response, ContextUtils.CONTENT_TYPE_XML, CacheStrategy.NO_CACHE );
-        Grid grid = instanceService.getTrackedEntityInstancesGrid( params );
-        GridUtils.toXml( grid, response.getOutputStream() );
+        GridUtils.toXml( getGridByCriteria( criteria ), response.getOutputStream() );
     }
 
     @RequestMapping( value = "/query", method = RequestMethod.GET, produces = ContextUtils.CONTENT_TYPE_EXCEL )
-    public void queryTrackedEntityInstancesXls(
-        @RequestParam( required = false ) String query,
-        @RequestParam( required = false ) Set<String> attribute,
-        @RequestParam( required = false ) Set<String> filter,
-        @RequestParam( required = false ) String ou,
-        @RequestParam( required = false ) OrganisationUnitSelectionMode ouMode,
-        @RequestParam( required = false ) String program,
-        @RequestParam( required = false ) ProgramStatus programStatus,
-        @RequestParam( required = false ) Boolean followUp,
-        @RequestParam( required = false ) Date lastUpdatedStartDate,
-        @RequestParam( required = false ) Date lastUpdatedEndDate,
-        @RequestParam( required = false ) Date programStartDate,
-        @RequestParam( required = false ) Date programEnrollmentStartDate,
-        @RequestParam( required = false ) Date programEndDate,
-        @RequestParam( required = false ) Date programEnrollmentEndDate,
-        @RequestParam( required = false ) Date programIncidentStartDate,
-        @RequestParam( required = false ) Date programIncidentEndDate,
-        @RequestParam( required = false ) String trackedEntityType,
-        @RequestParam( required = false ) AssignedUserSelectionMode assignedUserMode,
-        @RequestParam( required = false ) String assignedUser,
-        @RequestParam( required = false ) EventStatus eventStatus,
-        @RequestParam( required = false ) Date eventStartDate,
-        @RequestParam( required = false ) Date eventEndDate,
-        @RequestParam( required = false ) boolean skipMeta,
-        @RequestParam( required = false ) Integer page,
-        @RequestParam( required = false ) Integer pageSize,
-        @RequestParam( required = false ) boolean totalPages,
-        @RequestParam( required = false ) Boolean skipPaging,
-        @RequestParam( required = false ) Boolean paging,
-        @RequestParam( required = false ) boolean includeDeleted,
-        @RequestParam( required = false ) String order,
+    public void queryTrackedEntityInstancesXls( TrackedEntityInstanceCriteria criteria,
         HttpServletResponse response ) throws Exception
     {
-        programEnrollmentStartDate = ObjectUtils.firstNonNull( programEnrollmentStartDate, programStartDate );
-        programEnrollmentEndDate = ObjectUtils.firstNonNull( programEnrollmentEndDate, programEndDate );
-        Set<String> orgUnits = TextUtils.splitToArray( ou, TextUtils.SEMICOLON );
-        Set<String> assignedUsers = TextUtils.splitToArray( assignedUser, TextUtils.SEMICOLON );
-
-        skipPaging = PagerUtils.isSkipPaging( skipPaging, paging );
-
-        TrackedEntityInstanceQueryParams params = instanceService.getFromUrl( query, attribute, filter, orgUnits, ouMode,
-            program, programStatus, followUp, lastUpdatedStartDate, lastUpdatedEndDate, null,
-            programEnrollmentStartDate, programEnrollmentEndDate, programIncidentStartDate, programIncidentEndDate,
-            trackedEntityType, eventStatus, eventStartDate, eventEndDate, assignedUserMode, assignedUsers, skipMeta,
-            page, pageSize, totalPages, skipPaging, includeDeleted, false, getOrderParams( order ) );
-
         contextUtils.configureResponse( response, ContextUtils.CONTENT_TYPE_EXCEL, CacheStrategy.NO_CACHE );
-        Grid grid = instanceService.getTrackedEntityInstancesGrid( params );
-        GridUtils.toXls( grid, response.getOutputStream() );
+        GridUtils.toXls( getGridByCriteria( criteria ), response.getOutputStream() );
     }
 
     @RequestMapping( value = "/query", method = RequestMethod.GET, produces = ContextUtils.CONTENT_TYPE_CSV )
-    public void queryTrackedEntityInstancesCsv(
-        @RequestParam( required = false ) String query,
-        @RequestParam( required = false ) Set<String> attribute,
-        @RequestParam( required = false ) Set<String> filter,
-        @RequestParam( required = false ) String ou,
-        @RequestParam( required = false ) OrganisationUnitSelectionMode ouMode,
-        @RequestParam( required = false ) String program,
-        @RequestParam( required = false ) ProgramStatus programStatus,
-        @RequestParam( required = false ) Boolean followUp,
-        @RequestParam( required = false ) Date lastUpdatedStartDate,
-        @RequestParam( required = false ) Date lastUpdatedEndDate,
-        @RequestParam( required = false ) Date programStartDate,
-        @RequestParam( required = false ) Date programEnrollmentStartDate,
-        @RequestParam( required = false ) Date programEndDate,
-        @RequestParam( required = false ) Date programEnrollmentEndDate,
-        @RequestParam( required = false ) Date programIncidentStartDate,
-        @RequestParam( required = false ) Date programIncidentEndDate,
-        @RequestParam( required = false ) String trackedEntityType,
-        @RequestParam( required = false ) AssignedUserSelectionMode assignedUserMode,
-        @RequestParam( required = false ) String assignedUser,
-        @RequestParam( required = false ) EventStatus eventStatus,
-        @RequestParam( required = false ) Date eventStartDate,
-        @RequestParam( required = false ) Date eventEndDate,
-        @RequestParam( required = false ) boolean skipMeta,
-        @RequestParam( required = false ) Integer page,
-        @RequestParam( required = false ) Integer pageSize,
-        @RequestParam( required = false ) boolean totalPages,
-        @RequestParam( required = false ) Boolean skipPaging,
-        @RequestParam( required = false ) Boolean paging,
-        @RequestParam( required = false ) boolean includeDeleted,
-        @RequestParam( required = false ) String order,
+    public void queryTrackedEntityInstancesCsv( TrackedEntityInstanceCriteria criteria,
         HttpServletResponse response ) throws Exception
     {
-        programEnrollmentStartDate = ObjectUtils.firstNonNull( programEnrollmentStartDate, programStartDate );
-        programEnrollmentEndDate = ObjectUtils.firstNonNull( programEnrollmentEndDate, programEndDate );
-        Set<String> orgUnits = TextUtils.splitToArray( ou, TextUtils.SEMICOLON );
-        Set<String> assignedUsers = TextUtils.splitToArray( assignedUser, TextUtils.SEMICOLON );
-
-        skipPaging = PagerUtils.isSkipPaging( skipPaging, paging );
-
-        TrackedEntityInstanceQueryParams params = instanceService.getFromUrl( query, attribute, filter, orgUnits, ouMode,
-            program, programStatus, followUp, lastUpdatedStartDate, lastUpdatedEndDate, null,
-            programEnrollmentStartDate, programEnrollmentEndDate, programIncidentStartDate, programIncidentEndDate,
-            trackedEntityType, eventStatus, eventStartDate, eventEndDate, assignedUserMode, assignedUsers, skipMeta,
-            page, pageSize, totalPages, skipPaging, includeDeleted, false, getOrderParams( order ) );
-
         contextUtils.configureResponse( response, ContextUtils.CONTENT_TYPE_CSV, CacheStrategy.NO_CACHE );
-        Grid grid = instanceService.getTrackedEntityInstancesGrid( params );
-        GridUtils.toCsv( grid, response.getWriter() );
+        GridUtils.toCsv( getGridByCriteria( criteria ), response.getWriter() );
     }
 
     @RequestMapping( value = "/count", method = RequestMethod.GET )
-    public @ResponseBody int getTrackedEntityInstanceCount(
-        @RequestParam( required = false ) String query,
-        @RequestParam( required = false ) Set<String> attribute,
-        @RequestParam( required = false ) Set<String> filter,
-        @RequestParam( required = false ) String ou,
-        @RequestParam( required = false ) OrganisationUnitSelectionMode ouMode,
-        @RequestParam( required = false ) String program,
-        @RequestParam( required = false ) ProgramStatus programStatus,
-        @RequestParam( required = false ) Boolean followUp,
-        @RequestParam( required = false ) Date lastUpdatedStartDate,
-        @RequestParam( required = false ) Date lastUpdatedEndDate,
-        @RequestParam( required = false ) String lastUpdatedDuration,
-        @RequestParam( required = false ) Date programStartDate,
-        @RequestParam( required = false ) Date programEnrollmentStartDate,
-        @RequestParam( required = false ) Date programEndDate,
-        @RequestParam( required = false ) Date programEnrollmentEndDate,
-        @RequestParam( required = false ) Date programIncidentStartDate,
-        @RequestParam( required = false ) Date programIncidentEndDate,
-        @RequestParam( required = false ) String trackedEntityType,
-        @RequestParam( required = false ) String trackedEntityInstance,
-        @RequestParam( required = false ) AssignedUserSelectionMode assignedUserMode,
-        @RequestParam( required = false ) String assignedUser,
-        @RequestParam( required = false ) EventStatus eventStatus,
-        @RequestParam( required = false ) Date eventStartDate,
-        @RequestParam( required = false ) Date eventEndDate,
-        @RequestParam( required = false ) boolean includeDeleted ) throws Exception
+    public @ResponseBody int getTrackedEntityInstanceCount( TrackedEntityInstanceCriteria criteria )
     {
-        programEnrollmentStartDate = ObjectUtils.firstNonNull( programEnrollmentStartDate, programStartDate );
-        programEnrollmentEndDate = ObjectUtils.firstNonNull( programEnrollmentEndDate, programEndDate );
-        List<String> fields = Lists.newArrayList( contextService.getParameterValues( "fields" ) );
-
-        if ( fields.isEmpty() )
-        {
-            fields.add( ":all" );
-        }
-
-        Set<String> orgUnits = TextUtils.splitToArray( ou, TextUtils.SEMICOLON );
-        Set<String> assignedUsers = TextUtils.splitToArray( assignedUser, TextUtils.SEMICOLON );
-
-        TrackedEntityInstanceQueryParams queryParams = instanceService.getFromUrl( query, attribute, filter, orgUnits,
-            ouMode, program, programStatus, followUp, lastUpdatedStartDate, lastUpdatedEndDate, lastUpdatedDuration,
-            programEnrollmentStartDate, programEnrollmentEndDate, programIncidentStartDate, programIncidentEndDate,
-            trackedEntityType, eventStatus, eventStartDate, eventEndDate, assignedUserMode, assignedUsers, true,
-            TrackedEntityInstanceQueryParams.DEFAULT_PAGE, Pager.DEFAULT_PAGE_SIZE, true, true,
-            includeDeleted, false, null );
+        criteria.setSkipMeta( true );
+        criteria.setPage( TrackedEntityInstanceQueryParams.DEFAULT_PAGE );
+        criteria.setPageSize( TrackedEntityInstanceQueryParams.DEFAULT_PAGE_SIZE );
+        criteria.setTotalPages( true );
+        criteria.setSkipPaging( true );
+        criteria.setIncludeAllAttributes( false );
+        criteria.setOrder( null );
+        final TrackedEntityInstanceQueryParams queryParams = criteriaMapper.map( criteria );
 
         return trackedEntityInstanceService.getTrackedEntityInstanceCount( queryParams, false, false );
     }
 
-    @RequestMapping( value = "/{id}", method = RequestMethod.GET )
+    @GetMapping( value = "/{id}" )
     public @ResponseBody RootNode getTrackedEntityInstanceById(
         @PathVariable( "id" ) String pvId,
         @RequestParam( required = false ) String program ) throws WebMessageException, NotFoundException
     {
-        List<String> fields = Lists.newArrayList( contextService.getParameterValues( "fields" ) );
-
-        if ( fields.isEmpty() )
-        {
-            fields.add( ":all" );
-        }
+        List<String> fields = getFieldsFromRequest();
 
         CollectionNode collectionNode = fieldFilterService.toCollectionNode( TrackedEntityInstance.class,
             new FieldFilterParams( Lists.newArrayList( getTrackedEntityInstance( pvId, program, fields ) ), fields ) );
@@ -816,6 +533,15 @@ public class TrackedEntityInstanceController
     // HELPERS
     // -------------------------------------------------------------------------
 
+    private Grid getGridByCriteria(TrackedEntityInstanceCriteria criteria )
+    {
+        criteria.setLastUpdatedDuration( null );
+        criteria.setIncludeAllAttributes( false );
+        final TrackedEntityInstanceQueryParams queryParams = criteriaMapper.map( criteria );
+
+        return instanceService.getTrackedEntityInstancesGrid( queryParams );
+    }
+    
     /**
      * Starts an asynchronous import task.
      *
@@ -902,13 +628,48 @@ public class TrackedEntityInstanceController
         return ContextUtils.getContextPath( request ) + "/api/" + "trackedEntityInstances" + "/" + importSummary.getReference();
     }
 
-    private List<String> getOrderParams( String order )
+    private TrackedEntityInstanceParams getTrackedEntityInstanceParams( List<String> fields )
     {
-        if ( order != null && !StringUtils.isEmpty( order ) )
+        String joined = Joiner.on( "" ).join( fields );
+
+        if ( joined.contains( "*" ) )
         {
-            return Arrays.asList( order.split( "," ) );
+            return TrackedEntityInstanceParams.TRUE;
         }
 
-        return null;
+        TrackedEntityInstanceParams params = new TrackedEntityInstanceParams();
+
+        if ( joined.contains( "relationships" ) )
+        {
+            params.setIncludeRelationships( true );
+        }
+
+        if ( joined.contains( "enrollments" ) )
+        {
+            params.setIncludeEnrollments( true );
+        }
+
+        if ( joined.contains( "events" ) )
+        {
+            params.setIncludeEvents( true );
+        }
+
+        if ( joined.contains( "programOwners" ) )
+        {
+            params.setIncludeProgramOwners( true );
+        }
+
+        return params;
+    }
+
+    private List<String> getFieldsFromRequest()
+    {
+        List<String> fields = Lists.newArrayList( contextService.getParameterValues( "fields" ) );
+
+        if ( fields.isEmpty() )
+        {
+            fields.add( ":all" );
+        }
+        return fields;
     }
 }
