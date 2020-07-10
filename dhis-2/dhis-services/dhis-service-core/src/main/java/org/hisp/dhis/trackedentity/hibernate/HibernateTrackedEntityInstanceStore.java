@@ -762,6 +762,10 @@ public class HibernateTrackedEntityInstanceStore
         {
             sql += " (psi.assigneduserid is null) and ";
         }
+        if ( params.isIncludeOnlyUnassignedEvents() )
+        {
+            sql += " (psi.assigneduserid is null) and ";
+        }
 
         if ( params.isIncludeOnlyAssignedEvents() )
         {
